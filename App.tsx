@@ -16,6 +16,7 @@ import {
   Platform,
   TextInput,
   KeyboardAvoidingView,
+  Modal,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -59,32 +60,31 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       isLoggedIn: false,
-      currentUser: 'admin',
+      currentUser: '',
       registeredUsers: [
         { fullName: 'La Văn Trí', username: 'admin', password: '123456', phone: '0987654321' },
       ],
       login: (username, password) => {
         const found = get().registeredUsers.find(
-          (u) => u.username === username && u.password === password
+          (u) => u.username.toLowerCase() === username.trim().toLowerCase() && u.password === password
         );
-        if (found || (username === 'tri' && password === '1234')) {
-          set({ isLoggedIn: true, currentUser: username });
+        if (found || (username.trim() === 'tri' && password === '1234')) {
+          set({ isLoggedIn: true, currentUser: username.trim() });
           secureTokenService.saveToken('jwt_mock_token_shopai_' + Date.now()).catch(() => {});
           return true;
         }
         return false;
       },
-      // Đăng nhập nhanh bằng cảm biến sinh trắc học
       loginWithBiometrics: (targetUser) => {
         const user = targetUser || get().currentUser || 'admin';
         set({ isLoggedIn: true, currentUser: user });
         secureTokenService.saveToken('jwt_mock_token_shopai_' + Date.now()).catch(() => {});
         return true;
       },
-      register: (newUser) => set({ registeredUsers: [...get().registeredUsers, newUser] }),
+      register: (newUser) =>
+        set({ registeredUsers: [...get().registeredUsers, newUser] }),
       logout: () => {
         secureTokenService.removeToken().catch(() => {});
-        // Giữ lại tên currentUser cuối cùng để hỗ trợ nhận diện vân tay khi đăng nhập lại
         set({ isLoggedIn: false });
       },
     }),
@@ -219,18 +219,26 @@ export const useOrderStore = create<OrderState>()(
 const queryClient = new QueryClient();
 
 // ==========================================
-// 2. MÀN HÌNH ĐĂNG NHẬP (CÓ NÚT VÂN TAY)
+// 2. MÀN HÌNH ĐĂNG NHẬP & ĐĂNG KÝ TÀI KHOẢN
 // ==========================================
 
 function LoginScreen({ onLoginSuccess }: { onLoginSuccess: () => void }) {
-  const currentSavedUser = useAuthStore((s) => s.currentUser);
-  const [username, setUsername] = useState(currentSavedUser || 'admin');
-  const [password, setPassword] = useState('123456');
+  // Bỏ điền sẵn: Cả hai ô đều rỗng để người dùng tự gõ
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+
+  // Quản lý Modal Đăng ký tài khoản
+  const [isRegisterVisible, setIsRegisterVisible] = useState(false);
+  const [regFullName, setRegFullName] = useState('');
+  const [regUsername, setRegUsername] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regPhone, setRegPhone] = useState('');
 
   const login = useAuthStore((s) => s.login);
   const loginWithBiometrics = useAuthStore((s) => s.loginWithBiometrics);
+  const register = useAuthStore((s) => s.register);
 
-  // Đăng nhập bằng tài khoản / mật khẩu
+  // Xử lý Đăng nhập thủ công
   const handleLogin = () => {
     if (!username.trim() || !password.trim()) {
       Alert.alert('Thông báo', 'Vui lòng nhập đầy đủ tên tài khoản và mật khẩu!');
@@ -243,7 +251,7 @@ function LoginScreen({ onLoginSuccess }: { onLoginSuccess: () => void }) {
     } else {
       Alert.alert(
         'Đăng nhập thất bại',
-        'Tên tài khoản hoặc mật khẩu không chính xác!\n\n(Tài khoản mẫu: admin / 123456 hoặc tri / 1234)'
+        'Tên tài khoản hoặc mật khẩu không chính xác!\n\n(Nếu chưa có tài khoản, bạn hãy bấm Đăng ký ngay bên dưới)'
       );
     }
   };
@@ -257,7 +265,7 @@ function LoginScreen({ onLoginSuccess }: { onLoginSuccess: () => void }) {
       if (!available) {
         Alert.alert(
           'Không khả dụng',
-          'Thiết bị chưa đăng ký vân tay trong Cài đặt máy hoặc không có cảm biến sinh trắc học.'
+          'Thiết bị chưa cài đặt vân tay trong Cài đặt máy hoặc không hỗ trợ sinh trắc học.'
         );
         return;
       }
@@ -274,6 +282,40 @@ function LoginScreen({ onLoginSuccess }: { onLoginSuccess: () => void }) {
     } catch (error: any) {
       console.log('Lỗi xác thực vân tay:', error?.message);
     }
+  };
+
+  // Xử lý Đăng ký tài khoản mới
+  const handleRegisterSubmit = () => {
+    if (!regFullName.trim() || !regUsername.trim() || !regPassword.trim() || !regPhone.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng điền đầy đủ tất cả các trường thông tin!');
+      return;
+    }
+
+    register({
+      fullName: regFullName.trim(),
+      username: regUsername.trim(),
+      password: regPassword.trim(),
+      phone: regPhone.trim(),
+    });
+
+    Alert.alert(
+      'Đăng ký thành công 🎉',
+      `Tài khoản "${regUsername.trim()}" đã được đăng ký thành công! Hãy dùng tài khoản này để đăng nhập ngay.`,
+      [
+        {
+          text: 'Đăng nhập ngay',
+          onPress: () => {
+            setUsername(regUsername.trim());
+            setPassword(regPassword.trim());
+            setIsRegisterVisible(false);
+            setRegFullName('');
+            setRegUsername('');
+            setRegPassword('');
+            setRegPhone('');
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -308,7 +350,7 @@ function LoginScreen({ onLoginSuccess }: { onLoginSuccess: () => void }) {
             secureTextEntry
           />
 
-          {/* Nút Đăng nhập mật khẩu */}
+          {/* Nút Đăng nhập */}
           <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} activeOpacity={0.8}>
             <Text style={styles.loginBtnText}>Đăng Nhập</Text>
           </TouchableOpacity>
@@ -330,20 +372,96 @@ function LoginScreen({ onLoginSuccess }: { onLoginSuccess: () => void }) {
             <Text style={styles.biometricLoginBtnText}>Đăng nhập bằng Vân tay / Face ID</Text>
           </TouchableOpacity>
 
-          {/* Gợi ý tài khoản mẫu */}
-          <View style={styles.hintBox}>
-            <Text style={styles.hintTitle}>💡 Tài khoản mẫu trong hệ thống:</Text>
-            <Text style={styles.hintText}>
-              • Admin: <Text style={{ fontWeight: 'bold' }}>admin</Text> | Pass:{' '}
-              <Text style={{ fontWeight: 'bold' }}>123456</Text>
+          {/* NÚT MỞ BẢNG ĐĂNG KÝ TÀI KHOẢN MỚI */}
+          <TouchableOpacity
+            style={styles.registerLinkBtn}
+            onPress={() => setIsRegisterVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.registerLinkText}>
+              Chưa có tài khoản? <Text style={styles.registerLinkHighlight}>Đăng ký ngay</Text>
             </Text>
-            <Text style={styles.hintText}>
-              • Khách: <Text style={{ fontWeight: 'bold' }}>tri</Text> | Pass:{' '}
-              <Text style={{ fontWeight: 'bold' }}>1234</Text>
-            </Text>
-          </View>
+          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* MODAL ĐĂNG KÝ TÀI KHOẢN */}
+      <Modal
+        visible={isRegisterVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsRegisterVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>📝 Đăng ký tài khoản mới</Text>
+              <TouchableOpacity onPress={() => setIsRegisterVisible(false)}>
+                <Ionicons name="close-circle" size={26} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.inputLabel}>Họ và tên</Text>
+              <TextInput
+                style={styles.loginInput}
+                placeholder="Nhập họ và tên..."
+                placeholderTextColor="#94A3B8"
+                value={regFullName}
+                onChangeText={setRegFullName}
+              />
+
+              <Text style={styles.inputLabel}>Tên đăng nhập</Text>
+              <TextInput
+                style={styles.loginInput}
+                placeholder="Chọn tên đăng nhập..."
+                placeholderTextColor="#94A3B8"
+                value={regUsername}
+                onChangeText={setRegUsername}
+                autoCapitalize="none"
+              />
+
+              <Text style={styles.inputLabel}>Mật khẩu</Text>
+              <TextInput
+                style={styles.loginInput}
+                placeholder="Nhập mật khẩu..."
+                placeholderTextColor="#94A3B8"
+                value={regPassword}
+                onChangeText={setRegPassword}
+                secureTextEntry
+              />
+
+              <Text style={styles.inputLabel}>Số điện thoại</Text>
+              <TextInput
+                style={styles.loginInput}
+                placeholder="Nhập số điện thoại..."
+                placeholderTextColor="#94A3B8"
+                value={regPhone}
+                onChangeText={setRegPhone}
+                keyboardType="phone-pad"
+              />
+
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                onPress={handleRegisterSubmit}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalSubmitBtnText}>Xác nhận Đăng ký</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setIsRegisterVisible(false)}
+              >
+                <Text style={styles.modalCancelBtnText}>Quay lại Đăng nhập</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -538,7 +656,7 @@ function MainApp() {
     return () => backHandler.remove();
   }, [currentScreen, isLoggedIn, showAIChat]);
 
-  // 1. Luồng chưa đăng nhập -> Hiển thị form đăng nhập (kèm nút quét vân tay)
+  // 1. Luồng chưa đăng nhập -> Hiển thị form đăng nhập (ô trống + Đăng ký)
   if (!isLoggedIn) {
     return <LoginScreen onLoginSuccess={unlock} />;
   }
@@ -767,7 +885,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Dải phân cách HOẶC
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -785,7 +902,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Nút đăng nhập vân tay
   biometricLoginBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -803,24 +919,68 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  hintBox: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    padding: 12,
+  registerLinkBtn: {
     marginTop: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    paddingVertical: 6,
   },
-  hintTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0F766E',
-    marginBottom: 4,
-  },
-  hintText: {
-    fontSize: 12,
+  registerLinkText: {
+    fontSize: 14,
     color: '#64748B',
-    lineHeight: 18,
+  },
+  registerLinkHighlight: {
+    color: '#0F766E',
+    fontWeight: '700',
+  },
+
+  // Modal Đăng ký
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    maxHeight: '85%',
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  modalSubmitBtn: {
+    backgroundColor: '#0F766E',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  modalSubmitBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalCancelBtn: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  modalCancelBtnText: {
+    color: '#64748B',
+    fontSize: 14,
+    fontWeight: '500',
   },
 
   subHeader: {

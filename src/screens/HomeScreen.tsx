@@ -19,10 +19,9 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useQuery } from '@tanstack/react-query';
 import { Camera, CameraType } from 'react-native-camera-kit';
-import { LOCAL_PRODUCTS } from '../data/products';
 import { getCurrentLocation, LocationCoords } from '../services/locationService';
 import { useCartStore } from '../../App';
-import { BASE_URL } from '../services/api';
+import { getProducts, ProductItem } from '../services/productApi';
 
 // ==========================================
 // 1. CẤU HÌNH & TỌA ĐỘ KHO TRUNG TÂM
@@ -55,40 +54,6 @@ function calculateDistanceKm(userCoords: LocationCoords): number {
   return Math.round(R * c);
 }
 
-export interface ProductItem {
-  id: string | number;
-  name: string;
-  price: string;
-  rawPrice: number;
-  category: string;
-  image: string;
-  description?: string;
-}
-
-// Gọi API lấy dữ liệu từ Backend NestJS (SQLite Database)
-async function fetchProductsFromApi(): Promise<ProductItem[]> {
-  try {
-    const res = await fetch(`${BASE_URL}/products`);
-    if (!res.ok) {
-      throw new Error(`Lỗi kết nối máy chủ NestJS: ${res.status}`);
-    }
-    const data = await res.json();
-
-    return data.map((item: any) => ({
-      id: item.id.toString(),
-      name: item.name,
-      price: `${Number(item.price).toLocaleString('vi-VN')} đ`,
-      rawPrice: Number(item.price),
-      category: item.category || 'gaming',
-      image: item.image,
-      description: item.description,
-    }));
-  } catch (error) {
-    console.log('Không thể tải từ Server NestJS, chuyển sang dùng dữ liệu offline:', error);
-    return LOCAL_PRODUCTS;
-  }
-}
-
 interface HomeScreenProps {
   onNavigateToCart?: () => void;
   onNavigateToDetail?: (product: ProductItem) => void;
@@ -109,7 +74,7 @@ export default function HomeScreen({
     isRefetching,
   } = useQuery({
     queryKey: ['products'],
-    queryFn: fetchProductsFromApi,
+    queryFn: getProducts,
     staleTime: 1000 * 60 * 5,
   });
 
@@ -267,7 +232,7 @@ export default function HomeScreen({
   );
 
   // =========================================================================
-  // GIAO DIỆN QUÉT CAMERA (RENDER TRỰC TIẾP, FIX LỖI MÀN HÌNH ĐEN)
+  // GIAO DIỆN QUÉT CAMERA
   // =========================================================================
   if (isScannerVisible) {
     return (
