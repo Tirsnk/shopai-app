@@ -11,7 +11,7 @@ export async function fetchSamplePosts(): Promise<PostItem[]> {
     'https://jsonplaceholder.typicode.com/posts?_limit=10',
   );
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
+    throw new Error(`HTTP ${res.status}`);  
   }
   return res.json();
 }
